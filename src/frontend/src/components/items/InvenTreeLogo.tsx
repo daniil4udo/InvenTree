@@ -3,7 +3,7 @@ import { ActionIcon } from '@mantine/core';
 import { forwardRef } from 'react';
 import { NavLink } from 'react-router-dom';
 
-import InvenTreeIcon from './inventree.svg';
+import InvenTreeIcon from './inventree.png';
 
 export const InvenTreeLogoHomeButton = forwardRef<HTMLDivElement>(
   (props, ref) => {
