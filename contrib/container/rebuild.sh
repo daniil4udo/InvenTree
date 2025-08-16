@@ -5,6 +5,17 @@
 
 set -e
 
+# Source environment variables
+if [ -f .env ]; then
+    source .env
+else
+    echo "Error: .env file not found"
+    exit 1
+fi
+
+# Set default tag if not specified
+INVENTREE_TAG=${INVENTREE_TAG:-stable}
+
 echo "Starting InvenTree rebuild...\n"
 
 # Change to the container directory
@@ -17,7 +28,8 @@ echo "\nRemoving application containers..."
 docker compose rm -f inventree-server inventree-worker || true
 
 echo "\nRemoving InvenTree images..."
-docker rmi -f "inventree/inventree:stable" 2>/dev/null || echo "Image not found\n"
+docker rmi -f "inventree/inventree:${INVENTREE_TAG}" 2>/dev/null || echo "Image not found\n"
+docker rmi -f "inventree/inventree:${INVENTREE_TAG}-custom" 2>/dev/null || echo "Custom image not found\n"
 
 # Get the exact InvenTree image used by our services
 INVENTREE_IMAGE=$(docker compose config | grep -A 5 "inventree-server:" | grep "image:" | awk '{print $2}' | tr -d '"' || echo "")
@@ -40,8 +52,11 @@ for critical in $CRITICAL_IMAGES; do
 done
 
 # Actually remove the InvenTree image only
-if docker images | grep -q "inventree/inventree.*stable"; then
-    docker rmi -f "inventree/inventree:stable" || echo "Failed to remove image (may not exist)"
+if docker images | grep -q "inventree/inventree.*${INVENTREE_TAG}"; then
+    docker rmi -f "inventree/inventree:${INVENTREE_TAG}" || echo "Failed to remove image (may not exist)"
+fi
+if docker images | grep -q "inventree/inventree.*${INVENTREE_TAG}-custom"; then
+    docker rmi -f "inventree/inventree:${INVENTREE_TAG}-custom" || echo "Failed to remove custom image (may not exist)"
 fi
 
 # Remove any locally built InvenTree images (safer pattern matching)
