@@ -11,7 +11,7 @@ echo "Starting InvenTree rebuild...\n"
 # cd "$(dirname "$0")/contrib/container"
 
 echo "Stopping services...\n"
-docker compose down
+docker compose down --remove-orphans
 
 echo "\nRemoving application containers..."
 docker compose rm -f inventree-server inventree-worker || true
@@ -54,17 +54,17 @@ docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}" | grep -E "(con
 done
 
 echo "\nRebuilding..."
-docker compose run --rm inventree-server invoke update
+docker compose run --rm inventree-server invoke update --skip-backup
 
 echo "\nStarting services..."
 docker compose up -d
 
-# echo "\nFixing database collation warnings..."
-# DB_USER=$(grep INVENTREE_DB_USER .env | cut -d'=' -f2)
-# docker compose exec -T inventree-db psql -U $DB_USER -d inventree -c "ALTER DATABASE inventree REFRESH COLLATION VERSION;" > /dev/null 2>&1 || true
-# docker compose exec -T inventree-db psql -U $DB_USER -d postgres -c "ALTER DATABASE postgres REFRESH COLLATION VERSION;" > /dev/null 2>&1 || true
-# docker compose exec -T inventree-db psql -U $DB_USER -d template1 -c "ALTER DATABASE template1 REFRESH COLLATION VERSION;" > /dev/null 2>&1 || true
-# docker compose exec -T inventree-db psql -U $DB_USER -d inventree -c "REINDEX DATABASE inventree;" > /dev/null 2>&1 || true
+echo "\nFixing database collation warnings..."
+DB_USER=$(grep INVENTREE_DB_USER .env | cut -d'=' -f2)
+docker compose exec -T inventree-db psql -U $DB_USER -d inventree -c "ALTER DATABASE inventree REFRESH COLLATION VERSION;" > /dev/null 2>&1 || true
+docker compose exec -T inventree-db psql -U $DB_USER -d postgres -c "ALTER DATABASE postgres REFRESH COLLATION VERSION;" > /dev/null 2>&1 || true
+docker compose exec -T inventree-db psql -U $DB_USER -d template1 -c "ALTER DATABASE template1 REFRESH COLLATION VERSION;" > /dev/null 2>&1 || true
+docker compose exec -T inventree-db psql -U $DB_USER -d inventree -c "REINDEX DATABASE inventree;" > /dev/null 2>&1 || true
 
 echo "Rebuild completed.\n"
 docker compose ps
