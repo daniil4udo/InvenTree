@@ -5,7 +5,7 @@ FROM inventree/inventree:${INVENTREE_TAG} as production
 # Install django-anymail with brevo support (in addition to existing amazon_ses,postal)
 RUN pip install --no-cache-dir django-anymail[amazon_ses,postal,brevo]
 
-COPY src/backend/InvenTree ${INVENTREE_BACKEND_DIR}/InvenTree
+# COPY src/backend/InvenTree ${INVENTREE_BACKEND_DIR}/InvenTree
 
 # For now, we'll handle source code changes via volume mounts
 # The brevo package installation is the main custom package we need
