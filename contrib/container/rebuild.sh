@@ -27,44 +27,70 @@ docker compose down --remove-orphans
 echo "\nRemoving application containers..."
 docker compose rm -f inventree-server inventree-worker || true
 
-echo "\nRemoving InvenTree images..."
-docker rmi -f "inventree/inventree:${INVENTREE_TAG}" 2>/dev/null || echo "Image not found\n"
-docker rmi -f "inventree/inventree:${INVENTREE_TAG}-custom" 2>/dev/null || echo "Custom image not found\n"
+echo "\nDetecting and removing InvenTree images..."
 
-# Get the exact InvenTree image used by our services
-INVENTREE_IMAGE=$(docker compose config | grep -A 5 "inventree-server:" | grep "image:" | awk '{print $2}' | tr -d '"' || echo "")
+# Detect if we're using locally built images or pulled images
+USES_BUILD=$(docker compose config | grep -E "inventree-(server|worker):" -A 10 | grep -c "build:" || echo "0")
 
-# Safety checks before removal
-if [ -z "$INVENTREE_IMAGE" ]; then
-    # If no image specified in compose, it means it's built locally
-    INVENTREE_IMAGE="contrib-container-inventree-server"
-    echo "ℹ️  No explicit image found - looking for locally built image"
+# Get all InvenTree-related images that exist, but NEVER touch DB images
+INVENTREE_IMAGES=""
+
+if [ "$USES_BUILD" -gt 0 ]; then
+    echo "ℹ️  Detected locally built InvenTree images"
+    # Find actual locally built images (they follow compose project naming)
+    PROJECT_NAME=$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9-]//g')
+    
+    # Look for images that match the local build pattern - only server and worker
+    # This includes patterns like: inventree-inventree-server, inventree-inventree-worker, container-inventree-server, etc.
+    LOCAL_IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "(${PROJECT_NAME}[_-]?inventree[_-]?(server|worker)|inventree[_-]inventree[_-](server|worker))" | grep -vE "(db|database|postgres|mysql|mariadb)" || echo "")
+    
+    # Also check for pulled InvenTree images that might be present alongside local builds
+    PULLED_IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "^inventree/inventree:" | grep -vE "(db|database|postgres|mysql|mariadb)" || echo "")
+    
+    # Combine both local and pulled images
+    INVENTREE_IMAGES="$LOCAL_IMAGES $PULLED_IMAGES"
+else
+    echo "ℹ️  Detected pulled InvenTree images"
+    # Look for standard InvenTree images - exclude any with db/database keywords
+    PULLED_IMAGES=$(docker images --format "{{.Repository}}:{{.Tag}}" | grep -E "^inventree/inventree:" | grep -vE "(db|database|postgres|mysql|mariadb)" || echo "")
+    INVENTREE_IMAGES="$PULLED_IMAGES"
 fi
 
-# Extra safety: Verify this is NOT a critical system image
-CRITICAL_IMAGES="postgres redis caddy nginx mysql mariadb"
-for critical in $CRITICAL_IMAGES; do
-    if echo "$INVENTREE_IMAGE" | grep -qi "$critical"; then
-        echo "🚨 ERROR: Refusing to remove critical image containing '$critical': $INVENTREE_IMAGE"
-        echo "🛑 Script aborted for safety!"
-        exit 1
-    fi
+# Clean up the list and remove empty entries
+INVENTREE_IMAGES=$(echo "$INVENTREE_IMAGES" | tr ' ' '\n' | grep -v '^$' | sort -u | tr '\n' ' ')
+
+if [ -z "$INVENTREE_IMAGES" ]; then
+    echo "ℹ️  No InvenTree images found to remove"
+else
+    echo "ℹ️  Found InvenTree images to remove: $INVENTREE_IMAGES"
+fi
+
+# Extra safety: Verify these are NOT critical system images (NEVER TOUCH DATABASE!)
+CRITICAL_IMAGES="postgres redis caddy nginx mysql mariadb db database inventree-db inventree-cache"
+for inventree_img in $INVENTREE_IMAGES; do
+    for critical in $CRITICAL_IMAGES; do
+        if echo "$inventree_img" | grep -qi "$critical"; then
+            echo "🚨 ERROR: Refusing to remove critical image containing '$critical': $inventree_img"
+            echo "🛑 Script aborted for safety! DATABASE PROTECTION ACTIVATED!"
+            exit 1
+        fi
+    done
 done
 
-# Actually remove the InvenTree image only
-if docker images | grep -q "inventree/inventree.*${INVENTREE_TAG}"; then
-    docker rmi -f "inventree/inventree:${INVENTREE_TAG}" || echo "Failed to remove image (may not exist)"
-fi
-if docker images | grep -q "inventree/inventree.*${INVENTREE_TAG}-custom"; then
-    docker rmi -f "inventree/inventree:${INVENTREE_TAG}-custom" || echo "Failed to remove custom image (may not exist)"
+# Additional safety: Only proceed if we have actual InvenTree application images
+if [ -n "$INVENTREE_IMAGES" ]; then
+    echo "✅ Safety check passed - proceeding with InvenTree application images only"
+else
+    echo "ℹ️  No InvenTree application images to remove - skipping removal step"
 fi
 
-# Remove any locally built InvenTree images (safer pattern matching)
-docker images --format "table {{.Repository}}:{{.Tag}}\t{{.ID}}" | grep -E "(contrib-container|inventree)" | grep -v "inventree/inventree" | while read image_info; do
-    image_tag=$(echo "$image_info" | awk '{print $1}')
-    if [ ! -z "$image_tag" ]; then
-        echo "🗑️  Removing locally built image: $image_tag"
-        docker rmi -f "$image_tag" || echo "Failed to remove $image_tag"
+# Remove the InvenTree images based on detection
+for inventree_img in $INVENTREE_IMAGES; do
+    if docker images --format "{{.Repository}}:{{.Tag}}" | grep -q "^${inventree_img}$"; then
+        echo "🗑️  Removing InvenTree image: $inventree_img"
+        docker rmi -f "$inventree_img" || echo "Failed to remove $inventree_img (may not exist)"
+    else
+        echo "ℹ️  Image not found: $inventree_img"
     fi
 done
 
