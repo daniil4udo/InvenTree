@@ -65,7 +65,7 @@ console_log: True
 language: en-us
 
 # System time-zone (default is UTC). Reference: https://en.wikipedia.org/wiki/List_of_tz_database_time_zones
-timezone: UTC
+timezone: Asia/Dubai
 
 
 # Add new user on first startup by either adding values here or from a file
