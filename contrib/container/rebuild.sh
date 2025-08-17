@@ -7,7 +7,7 @@ set -e
 
 # Source environment variables
 if [ -f .env ]; then
-    source .env
+    . .env
 else
     echo "Error: .env file not found"
     exit 1
